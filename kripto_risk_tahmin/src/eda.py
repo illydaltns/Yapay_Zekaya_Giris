@@ -2,18 +2,9 @@ import pandas as pd
 import seaborn as sns
 import matplotlib.pyplot as plt
 import missingno as msno
-from pathlib import Path
 
-# =========================
-# Proje kök dizini
-# =========================
-BASE_DIR = Path(__file__).resolve().parent.parent
-
-TRAIN_PATH = BASE_DIR / "data" / "train" / "btc_train.csv"
-TEST_PATH  = BASE_DIR / "data" / "test"  / "btc_test.csv"
-
-train_df = pd.read_csv(TRAIN_PATH, parse_dates=["date"])
-test_df  = pd.read_csv(TEST_PATH,  parse_dates=["date"])
+train_df = pd.read_csv("data/train/btc_train.csv", parse_dates=["date"])
+test_df  = pd.read_csv("data/test/btc_test.csv",  parse_dates=["date"])
 
 eda_df = (
     pd.concat([train_df, test_df], axis=0)
