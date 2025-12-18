@@ -2,8 +2,8 @@ import pandas as pd
 import seaborn as sns
 import matplotlib.pyplot as plt
 import missingno as msno
+from pathlib import Path
 
-<<<<<<< HEAD
 # =========================
 # Görselleştirme Ayarları
 # =========================
@@ -108,10 +108,6 @@ def plot_scatter_volatility_return(df):
 print("Veriler yükleniyor...")
 train_df = pd.read_csv(TRAIN_PATH, parse_dates=["date"])
 test_df  = pd.read_csv(TEST_PATH,  parse_dates=["date"])
-=======
-train_df = pd.read_csv("data/train/btc_train.csv", parse_dates=["date"])
-test_df  = pd.read_csv("data/test/btc_test.csv",  parse_dates=["date"])
->>>>>>> 57327c9492d7069b1672e65830f5e94c273fc5f9
 
 eda_df = (
     pd.concat([train_df, test_df], axis=0)
@@ -160,3 +156,4 @@ print(eda_df.isnull().sum())
 msno.matrix(eda_df, sparkline=False, figsize=(10, 6), fontsize=12, color=(0.2, 0.4, 0.6))
 plt.title("Eksik Veri Matrisi", fontsize=16)
 plt.show()
+
