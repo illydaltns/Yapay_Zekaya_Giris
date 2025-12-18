@@ -7,7 +7,8 @@ ile kaydedilir.
 
 Şu an eğitilen modeller:
 1) Random Forest - Baseline (with volatility)
-2) Random Forest - Proxy model (without volatility)
+2) Random Forest - Proxy model (basic features)
+3) Random Forest - Proxy model (enhanced features)
 
 Yeni modeller bu yapı bozulmadan eklenebilir.
 """
@@ -35,14 +36,29 @@ TARGET = "risk"
 # ======================================================
 MODEL_CONFIGS = [
     {
-        "name": "random_forest_risk_with_volatility_v1",
+        "name": "rf_risk_baseline_with_volatility_v1",
         "features": ["close", "volume", "return", "volatility"],
-        "description": "Baseline model (upper bound)"
+        "description": "Baseline model (upper bound, volatility included)"
     },
     {
-        "name": "random_forest_risk_proxy_features_v1",
+        "name": "rf_risk_proxy_basic_v1",
         "features": ["close", "volume", "return"],
-        "description": "Proxy-based model (real learning)"
+        "description": "Proxy model (basic market features)"
+    },
+    {
+        "name": "rf_risk_proxy_enhanced_v1",
+        "features": [
+            "close",
+            "volume",
+            "return",
+            "body",
+            "range",
+            "return_lag_1",
+            "return_lag_3",
+            "ma_7_diff",
+            "range_pct"
+        ],
+        "description": "Proxy model (enhanced engineered features)"
     }
 ]
 
@@ -55,10 +71,11 @@ df = pd.read_csv(TRAIN_PATH)
 # MODEL EĞİTİM DÖNGÜSÜ
 # ======================================================
 for cfg in MODEL_CONFIGS:
-    print("\n" + "=" * 70)
-    print(f"TRAINING MODEL: {cfg['name']}")
-    print(f"Description  : {cfg['description']}")
-    print("=" * 70)
+    print("\n" + "=" * 75)
+    print(f"TRAINING MODEL : {cfg['name']}")
+    print(f"DESCRIPTION    : {cfg['description']}")
+    print(f"FEATURE COUNT  : {len(cfg['features'])}")
+    print("=" * 75)
 
     X = df[cfg["features"]]
     y = df[TARGET]

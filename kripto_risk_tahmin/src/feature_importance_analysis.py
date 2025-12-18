@@ -1,72 +1,71 @@
 """
 feature_importance_analysis.py
 
-Random Forest modelleri için feature importance analizi.
-Yeni isimlendirme standardına uygundur.
+Random Forest modeli için feature importance analizi.
+Amaç: Proxy enhanced modelin hangi feature'lara dayandığını görmek.
 """
 
-import joblib
 import pandas as pd
-import matplotlib.pyplot as plt
+import joblib
 from pathlib import Path
+import matplotlib.pyplot as plt
+import seaborn as sns
 
 # ======================================================
-# PROJE DİZİNLERİ
+# DİZİNLER
 # ======================================================
 BASE_DIR = Path(__file__).resolve().parent.parent
-MODEL_DIR = BASE_DIR / "models"
+MODEL_PATH = BASE_DIR / "models" / "rf_risk_proxy_enhanced_v1.pkl"
+TRAIN_PATH = BASE_DIR / "data" / "train" / "btc_train.csv"
 
 # ======================================================
-# MODEL VE FEATURE TANIMLARI
+# MODEL ve VERİ
 # ======================================================
-MODELS = {
-    "Baseline (With Volatility)": {
-        "path": MODEL_DIR / "random_forest_risk_with_volatility_v1.pkl",
-        "features": ["close", "volume", "return", "volatility"]
-    },
-    "Proxy Model (Without Volatility)": {
-        "path": MODEL_DIR / "random_forest_risk_proxy_features_v1.pkl",
-        "features": ["close", "volume", "return"]
-    }
-}
+model = joblib.load(MODEL_PATH)
+df = pd.read_csv(TRAIN_PATH)
+
+FEATURES = [
+    "close",
+    "volume",
+    "return",
+    "body",
+    "range",
+    "return_lag_1",
+    "return_lag_3",
+    "ma_7_diff",
+    "range_pct"
+]
+
+X = df[FEATURES]
 
 # ======================================================
-# FEATURE IMPORTANCE ANALİZİ
+# FEATURE IMPORTANCE
 # ======================================================
-all_results = []
+importances = model.feature_importances_
 
-for model_name, config in MODELS.items():
-    print(f"\nLoading model: {model_name}")
-    model = joblib.load(config["path"])
+importance_df = pd.DataFrame({
+    "feature": FEATURES,
+    "importance": importances
+}).sort_values(by="importance", ascending=False)
 
-    importances = model.feature_importances_
-
-    df = pd.DataFrame({
-        "model": model_name,
-        "feature": config["features"],
-        "importance": importances
-    })
-
-    all_results.append(df)
-
-fi_df = pd.concat(all_results).reset_index(drop=True)
-
-print("\n" + "=" * 70)
-print("FEATURE IMPORTANCE ANALYSIS")
-print("=" * 70)
-print(fi_df)
+print("\nFEATURE IMPORTANCE:")
+print(importance_df)
 
 # ======================================================
 # GÖRSELLEŞTİRME
 # ======================================================
-for model_name in fi_df["model"].unique():
-    subset = fi_df[fi_df["model"] == model_name] \
-        .sort_values(by="importance", ascending=False)
+plt.figure(figsize=(10, 6))
+sns.barplot(
+    x="importance",
+    y="feature",
+    data=importance_df,
+    hue="feature",
+    legend=False,
+    palette="viridis"
+)
 
-    plt.figure(figsize=(8, 5))
-    plt.barh(subset["feature"], subset["importance"])
-    plt.title(f"Feature Importance - {model_name}")
-    plt.xlabel("Importance")
-    plt.gca().invert_yaxis()
-    plt.tight_layout()
-    plt.show()
+plt.title("Feature Importance - Random Forest (Proxy Enhanced)")
+plt.xlabel("Importance Score")
+plt.ylabel("Feature")
+plt.tight_layout()
+plt.show()
