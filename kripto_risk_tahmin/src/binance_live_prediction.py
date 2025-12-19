@@ -1,8 +1,8 @@
 """
 binance_live_prediction.py
 
-Binance API üzerinden son günlük BTC verisini çekip
-eğitilmiş final modeli ile risk tahmini yapar.
+Binance API üzerinden güncel BTC verisini çekip
+LightGBM (Lagged - Clean Final) modeli ile risk tahmini yapar.
 """
 
 import pandas as pd
@@ -11,34 +11,25 @@ from binance.client import Client
 import joblib
 
 # ======================================================
-# BINANCE (PUBLIC API - KEY GEREKMİYOR)
+# BINANCE (PUBLIC API)
 # ======================================================
 client = Client()
 
 SYMBOL = "BTCUSDT"
 INTERVAL = Client.KLINE_INTERVAL_1DAY
-LOOKBACK_DAYS = 60  # feature'lar için yeterli pencere
+LOOKBACK_DAYS = 60  # volatility + lag için yeterli
 
 # ======================================================
 # PROJE DİZİNLERİ
 # ======================================================
 BASE_DIR = Path(__file__).resolve().parent.parent
-MODEL_PATH = BASE_DIR / "models" / "rf_risk_final_v1.pkl"
+MODEL_PATH = BASE_DIR / "models" / "lightgbm_model_lagged.pkl"
 
 # ======================================================
-# FEATURE SET (FINAL MODEL)
+# MODELİ YÜKLE
 # ======================================================
-FEATURES = [
-    "close",
-    "volume",
-    "return",
-    "body",
-    "range",
-    "return_lag_1",
-    "return_lag_3",
-    "ma_7_diff",
-    "range_pct"
-]
+model = joblib.load(MODEL_PATH)
+FEATURES = model.feature_names_in_
 
 # ======================================================
 # 1️⃣ VERİYİ ÇEK
@@ -59,41 +50,30 @@ df = pd.DataFrame(klines, columns=[
 df["open_time"] = pd.to_datetime(df["open_time"], unit="ms")
 df = df.rename(columns={"open_time": "date"})
 
-# Sayısal kolonlar
 for col in ["open", "high", "low", "close", "volume"]:
     df[col] = df[col].astype(float)
 
 df = df.sort_values("date")
 
 # ======================================================
-# 2️⃣ FEATURE ENGINEERING (AYNI MANTIK)
+# 2️⃣ FEATURE ENGINEERING (TRAIN İLE AYNI)
 # ======================================================
 df["return"] = df["close"].pct_change()
+df["volatility"] = df["return"].rolling(14).std()
 df["range"] = df["high"] - df["low"]
 df["body"] = df["close"] - df["open"]
 
-df["return_lag_1"] = df["return"].shift(1)
-df["return_lag_3"] = df["return"].shift(3)
-
-df["ma_7"] = df["close"].rolling(7).mean()
-df["ma_7_diff"] = (df["close"] - df["ma_7"]) / df["ma_7"]
-
-df["range_pct"] = df["range"] / df["close"]
+# LAG
+df["return_lag1"] = df["return"].shift(1)
+df["volatility_lag1"] = df["volatility"].shift(1)
 
 df = df.dropna()
 
 # ======================================================
-# 3️⃣ MODELİ YÜKLE
+# 3️⃣ TAHMİN (SON GÜN)
 # ======================================================
-model = joblib.load(MODEL_PATH)
-
-# ======================================================
-# 4️⃣ TAHMİN (SON GÜN)
-# ======================================================
-latest = df.iloc[-1]
-X_latest = latest[FEATURES].values.reshape(1, -1)
-
-risk_pred = model.predict(X_latest)[0]
+X_live = df[FEATURES].iloc[-1:].copy()
+risk_pred = model.predict(X_live)[0]
 
 risk_map = {
     0: "LOW RISK 🟢",
@@ -101,8 +81,10 @@ risk_map = {
     2: "HIGH RISK 🔴"
 }
 
+latest = df.iloc[-1]
+
 print("=" * 60)
-print("BINANCE LIVE RISK PREDICTION")
+print("BINANCE LIVE RISK PREDICTION (LIGHTGBM)")
 print("=" * 60)
 print(f"Date : {latest['date'].date()}")
 print(f"Price: {latest['close']:.2f} USDT")
