@@ -244,89 +244,146 @@ elif page == "🔮 Canlı Tahmin":
     # Binance'den veri çek
     if st.button("🔄 Güncel Veriyi Çek", type="primary"):
         with st.spinner("Binance'den veri çekiliyor..."):
-            live_df = get_live_data(COINS[selected_coin]["symbol"], days=60)
+            # 60 günlük tahmin için biraz daha fazla veri çekelim (indicatorler için)
+            live_df = get_live_data(COINS[selected_coin]["symbol"], days=90)
             
             if live_df is not None:
                 st.success(f"✅ {len(live_df)} günlük veri çekildi!")
                 
                 # Feature engineering
+                # Tahmin için feature'ları ekle
                 df_with_features = add_features_for_prediction(live_df)
                 
                 if len(df_with_features) > 0:
-                    # Son gün için tahmin
-                    last_row = df_with_features.iloc[-1:]
-                    X_pred = last_row[FEATURES]
+                    # Tüm veri için tahmin yap
+                    # Feature engineering sonrası baştaki bazı satırlar NaN olup düşmüş olabilir
+                    # O yüzden elimizdeki tüm veriye tahmin yapıyoruz
+                    X_all = df_with_features[FEATURES]
+                    all_preds = model.predict(X_all)
+                    all_probs = model.predict_proba(X_all)
                     
-                    # Tahmin
-                    risk_pred = model.predict(X_pred)[0]
-                    risk_proba = model.predict_proba(X_pred)[0]
+                    # Tahminleri dataframe'e ekle
+                    df_with_features["risk_pred"] = all_preds
                     
-                    # Sonuçları göster
-                    col1, col2, col3 = st.columns(3)
+                    # Tabs
+                    tab_today, tab_week, tab_month, tab_2months = st.tabs(["Bugün", "Son 7 Gün", "Son 1 Ay", "Son 60 Gün"])
                     
-                    with col1:
-                        st.metric("Tarih", last_row["date"].iloc[0].strftime("%Y-%m-%d"))
-                        st.metric("Fiyat", f"${last_row['close'].iloc[0]:,.2f}")
-                    
-                    with col2:
-                        risk_info = RISK_LABELS[risk_pred]
-                        st.metric(
-                            "Tahmin Edilen Risk",
-                            f"{risk_info['color']} {risk_info['label']}",
-                            delta=f"Risk Seviyesi: {risk_pred}"
+                    # --- TAB 1: BUGÜN ---
+                    with tab_today:
+                        # Son gün için tahmin
+                        last_row = df_with_features.iloc[-1]
+                        risk_pred = last_row["risk_pred"]
+                        risk_proba = all_probs[-1]
+                        
+                        # Sonuçları göster
+                        col1, col2, col3 = st.columns(3)
+                        
+                        with col1:
+                            st.metric("Tarih", last_row["date"].strftime("%Y-%m-%d"))
+                            st.metric("Fiyat", f"${last_row['close']:,.2f}")
+                        
+                        with col2:
+                            risk_info = RISK_LABELS[risk_pred]
+                            st.metric(
+                                "Tahmin Edilen Risk",
+                                f"{risk_info['color']} {risk_info['label']}",
+                                delta=f"Risk Seviyesi: {risk_pred}"
+                            )
+                        
+                        with col3:
+                            st.metric("Volatilite", f"{last_row['volatility']:.6f}")
+                            st.metric("Günlük Getiri", f"{last_row['return']*100:.2f}%")
+                        
+                        # Olasılık dağılımı
+                        st.subheader("Risk Olasılıkları")
+                        proba_df = pd.DataFrame({
+                            "Risk Seviyesi": [RISK_LABELS[i]["label"] for i in range(3)],
+                            "Olasılık": risk_proba
+                        })
+                        fig = px.bar(
+                            proba_df,
+                            x="Risk Seviyesi",
+                            y="Olasılık",
+                            color="Risk Seviyesi",
+                            color_discrete_map={
+                                RISK_LABELS[0]["label"]: RISK_LABELS[0]["color_hex"],
+                                RISK_LABELS[1]["label"]: RISK_LABELS[1]["color_hex"],
+                                RISK_LABELS[2]["label"]: RISK_LABELS[2]["color_hex"]
+                            },
+                            title="Risk Sınıfı Olasılık Dağılımı"
                         )
-                    
-                    with col3:
-                        st.metric("Volatilite", f"{last_row['volatility'].iloc[0]:.6f}")
-                        st.metric("Günlük Getiri", f"{last_row['return'].iloc[0]*100:.2f}%")
-                    
-                    # Olasılık dağılımı
-                    st.subheader("Risk Olasılıkları")
-                    proba_df = pd.DataFrame({
-                        "Risk Seviyesi": [RISK_LABELS[i]["label"] for i in range(3)],
-                        "Olasılık": risk_proba
-                    })
-                    fig = px.bar(
-                        proba_df,
-                        x="Risk Seviyesi",
-                        y="Olasılık",
-                        color="Risk Seviyesi",
-                        color_discrete_map={
-                            RISK_LABELS[0]["label"]: RISK_LABELS[0]["color_hex"],
-                            RISK_LABELS[1]["label"]: RISK_LABELS[1]["color_hex"],
-                            RISK_LABELS[2]["label"]: RISK_LABELS[2]["color_hex"]
-                        },
-                        title="Risk Sınıfı Olasılık Dağılımı"
-                    )
-                    fig.update_layout(yaxis_tickformat=".2%")
-                    st.plotly_chart(fig, use_container_width=True)
-                    
-                    # Son 30 günün grafiği
-                    st.subheader("Son 30 Gün - Fiyat ve Volatilite")
-                    recent_df = df_with_features.tail(30)
-                    fig = go.Figure()
-                    fig.add_trace(go.Scatter(
-                        x=recent_df["date"],
-                        y=recent_df["close"],
-                        name="Fiyat",
-                        yaxis="y",
-                        line=dict(color="blue")
-                    ))
-                    fig.add_trace(go.Scatter(
-                        x=recent_df["date"],
-                        y=recent_df["volatility"],
-                        name="Volatilite",
-                        yaxis="y2",
-                        line=dict(color="red")
-                    ))
-                    fig.update_layout(
-                        title="Fiyat ve Volatilite",
-                        xaxis_title="Tarih",
-                        yaxis=dict(title="Fiyat (USDT)", side="left"),
-                        yaxis2=dict(title="Volatilite", side="right", overlaying="y"),
-                        hovermode="x unified"
-                    )
-                    st.plotly_chart(fig, use_container_width=True)
+                        fig.update_layout(yaxis_tickformat=".2%")
+                        st.plotly_chart(fig, use_container_width=True)
+
+                    # --- YARDIMCI GÖRSELLEŞTİRME FONKSİYONU ---
+                    def create_risk_history_chart(data, title):
+                        fig = go.Figure()
+                        
+                        # Fiyat Çizgisi
+                        fig.add_trace(go.Scatter(
+                            x=data["date"],
+                            y=data["close"],
+                            name="Fiyat",
+                            mode="lines",
+                            line=dict(color="gray", width=1)
+                        ))
+                        
+                        # Risk Noktaları
+                        for risk_val in RISK_LABELS:
+                            mask = data["risk_pred"] == risk_val
+                            if mask.any():
+                                fig.add_trace(go.Scatter(
+                                    x=data[mask]["date"],
+                                    y=data[mask]["close"],
+                                    name=RISK_LABELS[risk_val]["label"],
+                                    mode="markers",
+                                    marker=dict(
+                                        color=RISK_LABELS[risk_val]["color_hex"],
+                                        size=10,
+                                        symbol="circle"
+                                    )
+                                ))
+                        
+                        fig.update_layout(
+                            title=title,
+                            xaxis_title="Tarih",
+                            yaxis_title="Fiyat (USDT)",
+                            hovermode="x unified"
+                        )
+                        return fig
+
+                    def create_risk_table(data):
+                         # Tablo için veri hazırlığı
+                        table_df = data[["date", "close", "risk_pred"]].copy()
+                        table_df["date"] = table_df["date"].dt.strftime("%Y-%m-%d")
+                        table_df["Risk"] = table_df["risk_pred"].apply(lambda x: f"{RISK_LABELS[x]['color']} {RISK_LABELS[x]['label']}")
+                        table_df = table_df.rename(columns={"date": "Tarih", "close": "Fiyat", "risk_pred": "Risk Kodu"})
+                        return table_df[["Tarih", "Fiyat", "Risk"]]
+
+                    # --- TAB 2: SON 7 GÜN ---
+                    with tab_week:
+                        st.subheader("Son 7 Günlük Risk Analizi")
+                        last_7_days = df_with_features.tail(7).sort_values("date", ascending=False)
+                        st.dataframe(create_risk_table(last_7_days), use_container_width=True, hide_index=True)
+                        last_7_days_chron = last_7_days.sort_values("date")
+                        st.plotly_chart(create_risk_history_chart(last_7_days_chron, "Son 7 Gün Fiyat ve Risk"), use_container_width=True)
+
+                    # --- TAB 3: SON 1 AY ---
+                    with tab_month:
+                        st.subheader("Son 30 Günlük Risk Analizi")
+                        last_30_days = df_with_features.tail(30).sort_values("date", ascending=False)
+                        st.dataframe(create_risk_table(last_30_days), use_container_width=True, hide_index=True)
+                        last_30_days_chron = last_30_days.sort_values("date")
+                        st.plotly_chart(create_risk_history_chart(last_30_days_chron, "Son 30 Gün Fiyat ve Risk"), use_container_width=True)
+
+                    # --- TAB 4: SON 60 GÜN ---
+                    with tab_2months:
+                        st.subheader("Son 60 Günlük Risk Analizi")
+                        last_60_days = df_with_features.tail(60).sort_values("date", ascending=False)
+                        st.dataframe(create_risk_table(last_60_days), use_container_width=True, hide_index=True)
+                        last_60_days_chron = last_60_days.sort_values("date")
+                        st.plotly_chart(create_risk_history_chart(last_60_days_chron, "Son 60 Gün Fiyat ve Risk"), use_container_width=True)
+                        
                 else:
                     st.warning("Yeterli veri yok!")
             else:
