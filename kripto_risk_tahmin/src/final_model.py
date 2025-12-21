@@ -21,7 +21,7 @@ TEST_PATH  = BASE_DIR / "data" / "test"  / "btc_test.csv"
 MODEL_DIR  = BASE_DIR / "models"
 MODEL_DIR.mkdir(exist_ok=True)
 
-MODEL_PATH = MODEL_DIR / "rf_risk_final_v1.pkl"
+MODEL_PATH = MODEL_DIR / "btc_rf_risk_final_v1.pkl"
 
 # ======================================================
 # FEATURE SET (ENHANCED)
