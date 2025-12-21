@@ -36,19 +36,13 @@ COINS = {
         "test": BASE_DIR / "data" / "test" / "btc_test.csv",
         "model": BASE_DIR / "models" / "lightgbm_model_lagged.pkl"
     },
-    "ETH": {
-        "name": "Ethereum",
-        "symbol": "ETHUSDT",
-        "train": BASE_DIR / "data" / "train" / "eth_train.csv",
-        "test": BASE_DIR / "data" / "test" / "eth_test.csv",
-        "model": BASE_DIR / "models" / "lightgbm_model_lagged.pkl"
-    },
+
     "SOL": {
         "name": "Solana",
         "symbol": "SOLUSDT",
         "train": BASE_DIR / "data" / "train" / "sol_train.csv",
         "test": BASE_DIR / "data" / "test" / "sol_test.csv",
-        "model": BASE_DIR / "models" / "lightgbm_model_lagged.pkl"
+        "model": BASE_DIR / "models" / "sol_rf_risk_final_v1.pkl"
     }
 }
 
@@ -58,6 +52,10 @@ RISK_LABELS = {
     1: {"label": "Orta Risk", "color": "🟡", "color_hex": "#ffff00"},
     2: {"label": "Yüksek Risk", "color": "🔴", "color_hex": "#ff0000"}
 }
+
+# ======================================================
+# YARDIMCI FONKSİYONLAR
+# ======================================================
 
 # @st.cache_data  <-- Commented out or removed to force reload
 def load_model(coin: str):
@@ -108,24 +106,41 @@ def get_live_data(symbol: str, days: int = 60):
         return None
 
 def add_features_for_prediction(df: pd.DataFrame) -> pd.DataFrame:
-    """Tahmin için feature engineering"""
+    """
+    Tahmin için feature engineering.
+    TÜM MODELLERİN ihtiyaç duyabileceği TÜM feature'ları hesaplar.
+    """
     df = df.sort_values("date").copy()
+    
+    # 1. Temel
     df["return"] = df["close"].pct_change()
     df["volatility"] = df["return"].rolling(window=14).std()
     df["range"] = df["high"] - df["low"]
     df["body"] = df["close"] - df["open"]
     
-    # Lag Features (Modelin beklediği isimlerle)
+    # 2. LightGBM için Lag'ler (Özel isimlendirme)
     df["return_lag1"] = df["return"].shift(1)
     df["volatility_lag1"] = df["volatility"].shift(1)
     
-    # Diğerleri (Görselleştirme için kalsın)
+    # 3. RF ve LogReg için Feature'lar
     df["return_lag_1"] = df["return"].shift(1)
     df["return_lag_3"] = df["return"].shift(3)
     df["ma_7"] = df["close"].rolling(7).mean()
     df["ma_7_diff"] = (df["close"] - df["ma_7"]) / df["ma_7"]
     df["range_pct"] = df["range"] / df["close"]
+    
     return df.dropna()
+
+def get_model_features(model):
+    """Modelin hangi feature'ları beklediğini döndürür."""
+    if hasattr(model, "feature_names_in_"):
+        return list(model.feature_names_in_)
+    # Fallback (Eğer attribute yoksa modele göre statik liste)
+    # Ancak sklearn > 1.0 ve LGBM bunu destekler.
+    return [
+        "return_lag1", "volatility_lag1", 
+        "range", "body", "volume"
+    ]
 
 # ======================================================
 # SIDEBAR
@@ -163,14 +178,10 @@ if model is None:
     st.error(f"❌ {selected_coin} için model bulunamadı! Lütfen önce modeli eğitin.")
     st.stop()
 
-# Feature listesi (LightGBM Lagged Model)
-FEATURES = [
-    "return_lag1",
-    "volatility_lag1",
-    "range",
-    "body",
-    "volume"
-]
+# Dinamik Feature Listesi
+FEATURES = get_model_features(model)
+st.sidebar.info(f"Kullanılan Model: {type(model).__name__}")
+
 
 # ======================================================
 # SAYFA İÇERİKLERİ
