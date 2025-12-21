@@ -34,21 +34,21 @@ COINS = {
         "symbol": "BTCUSDT",
         "train": BASE_DIR / "data" / "train" / "btc_train.csv",
         "test": BASE_DIR / "data" / "test" / "btc_test.csv",
-        "model": BASE_DIR / "models" / "rf_risk_final_v1.pkl"
+        "model": BASE_DIR / "models" / "lightgbm_model_lagged.pkl"
     },
     "ETH": {
         "name": "Ethereum",
         "symbol": "ETHUSDT",
         "train": BASE_DIR / "data" / "train" / "eth_train.csv",
         "test": BASE_DIR / "data" / "test" / "eth_test.csv",
-        "model": BASE_DIR / "models" / "eth_rf_risk_final_v1.pkl"
+        "model": BASE_DIR / "models" / "lightgbm_model_lagged.pkl"
     },
     "SOL": {
         "name": "Solana",
         "symbol": "SOLUSDT",
         "train": BASE_DIR / "data" / "train" / "sol_train.csv",
         "test": BASE_DIR / "data" / "test" / "sol_test.csv",
-        "model": BASE_DIR / "models" / "sol_rf_risk_final_v1.pkl"
+        "model": BASE_DIR / "models" / "lightgbm_model_lagged.pkl"
     }
 }
 
@@ -59,21 +59,17 @@ RISK_LABELS = {
     2: {"label": "Yüksek Risk", "color": "🔴", "color_hex": "#ff0000"}
 }
 
-# ======================================================
-# YARDIMCI FONKSİYONLAR
-# ======================================================
-
-@st.cache_data
+# @st.cache_data  <-- Commented out or removed to force reload
 def load_model(coin: str):
-    """Modeli yükle (cache'lenmiş)"""
+    """Modeli yükle (cache kapalı - model değişimi için)"""
     model_path = COINS[coin]["model"]
     if model_path.exists():
         return joblib.load(model_path)
     return None
 
-@st.cache_data
+# @st.cache_data <-- Commented out or removed
 def load_data(coin: str, data_type: str = "train"):
-    """Veriyi yükle (cache'lenmiş)"""
+    """Veriyi yükle"""
     if data_type == "train":
         path = COINS[coin]["train"]
     else:
@@ -118,6 +114,12 @@ def add_features_for_prediction(df: pd.DataFrame) -> pd.DataFrame:
     df["volatility"] = df["return"].rolling(window=14).std()
     df["range"] = df["high"] - df["low"]
     df["body"] = df["close"] - df["open"]
+    
+    # Lag Features (Modelin beklediği isimlerle)
+    df["return_lag1"] = df["return"].shift(1)
+    df["volatility_lag1"] = df["volatility"].shift(1)
+    
+    # Diğerleri (Görselleştirme için kalsın)
     df["return_lag_1"] = df["return"].shift(1)
     df["return_lag_3"] = df["return"].shift(3)
     df["ma_7"] = df["close"].rolling(7).mean()
@@ -161,10 +163,13 @@ if model is None:
     st.error(f"❌ {selected_coin} için model bulunamadı! Lütfen önce modeli eğitin.")
     st.stop()
 
-# Feature listesi
+# Feature listesi (LightGBM Lagged Model)
 FEATURES = [
-    "close", "volume", "return", "body", "range",
-    "return_lag_1", "return_lag_3", "ma_7_diff", "range_pct"
+    "return_lag1",
+    "volatility_lag1",
+    "range",
+    "body",
+    "volume"
 ]
 
 # ======================================================
@@ -395,6 +400,13 @@ elif page == "📈 Veri Analizi":
     train_df = load_data(selected_coin, "train")
     test_df = load_data(selected_coin, "test")
     
+    # Feature hesapla (eksik kolonlar için)
+    if train_df is not None:
+        train_df = add_features_for_prediction(train_df)
+    
+    if test_df is not None:
+        test_df = add_features_for_prediction(test_df)
+    
     if train_df is not None:
         # Korelasyon matrisi
         st.subheader("Korelasyon Matrisi")
@@ -439,7 +451,7 @@ elif page == "📈 Veri Analizi":
                 x="Importance",
                 y="Feature",
                 orientation="h",
-                title="Feature Importance (Random Forest)",
+                title="Feature Importance (LightGBM)",
                 labels={"Importance": "Önem Skoru", "Feature": "Feature"}
             )
             st.plotly_chart(fig, use_container_width=True)
@@ -452,6 +464,14 @@ elif page == "📋 Model Performansı":
     test_df = load_data(selected_coin, "test")
     
     if test_df is not None and "risk" in test_df.columns:
+        
+        # Feature'ları hesapla (CSV'de yoksa)
+        test_df = add_features_for_prediction(test_df)
+        
+        if len(test_df) == 0:
+             st.error("Veri işlendikten sonra boş kaldı! (Çok az veri olabilir)")
+             st.stop()
+             
         # Test seti tahminleri
         X_test = test_df[FEATURES]
         y_test = test_df["risk"]
